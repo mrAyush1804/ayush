@@ -1,0 +1,243 @@
+
+Production Level Jobs: Alag-Alag vs Ek Job
+Production-level pipeline mein jobs ko alag-alag ya ek mein rakhne ka faisla project ki zarurat aur complexity pe depend karta hai. Main dono tareeke explain karta hoon:
+
+1. Alag-Alag Jobs (Jaisa Tumhara Abhi Hai)
+Kya Hai: Tumhare code mein 3 jobs hain—build-and-test, sign-and-deploy, aur publish—har ek apna kaam karta hai.
+Kyun Better Hai Production Mein:
+Modularity: Har job independent hai—agar ek fail ho, toh baaki pe asar nahi padta (jab tak needs use na ho).
+Parallel Execution: Agar resources allow karein, GitHub Actions alag jobs ko parallel chala sakta hai, time bachata hai.
+Clarity: Debugging aur maintenance asaan hoti hai kyunki har stage ka kaam alag dikhta hai.
+Kab Use Karna: Jab project bada ho, multiple teams ho, ya complex workflows chahiyein (jaise Android app ke liye testing, signing, aur deployment alag rakhna).
+2. Ek Job Mein Sab
+Kya Hai: Saare stages (lint, build, test, etc.) ko ek hi job mein daal do.
+Kyun Use Karna:
+Simplicity: Chhote projects ke liye simple aur manageable hota hai.
+Kam Overhead: Alag jobs ke liye machine setup (jaise JDK ya Gradle cache) bar-bar nahi karna padta.
+Kyun Nahi Production Mein Better:
+Agar ek step fail hua, pura job ruk jata hai—restart karna mushkil hota hai.
+Parallel execution nahi ho sakti, toh slow ho sakta hai.
+Kab Use Karna: Jab project chhota ho ya quick prototype ban rahi ho.
+Production Mein Suggestion: Alag-alag jobs rakhna better hai (jaise abhi hai)—yeh scalable aur maintainable hai. Tumhara current setup already achha hai, lekin thodi tuning kar sakte hain.
+
+Linux Scripting Kaise Use Karna Hai?
+Linux scripting (bash commands) ko GitHub Actions mein run keyword ke saath use karke performance aur flexibility badha sakte hain. Yeh examples ke saath samjhaoonga:
+
+1. Custom Build Script
+Kya: Build ke liye ek bash script banao jo Gradle commands ko optimize kare.
+Kaise: scripts/build.sh file banao:
+bash
+Wrap
+Copy
+#!/bin/bash
+echo "Starting build..."
+./gradlew assembleDebug --parallel --no-daemon  # Parallel build aur daemon off karke memory save
+if [ $? -eq 0 ]; then
+  echo "Build successful!"
+else
+  echo "Build failed!" >&2
+  exit 1
+fi
+YML Mein Add:
+yaml
+Wrap
+Copy
+- name: Build with Script
+  run: |
+    chmod +x scripts/build.sh  # Permission do
+    ./scripts/build.sh
+Kyun: --parallel se multi-core use hota hai, aur error handling script mein built-in hota hai.
+2. Test aur Report Combine
+Kya: Test aur report ko ek script mein karo taaki steps kam ho.
+Kaise: scripts/test-and-report.sh:
+bash
+Wrap
+Copy
+#!/bin/bash
+./gradlew testDebugUnitTest
+mkdir -p reports
+cp -r app/build/test-results/testDebugUnitTest/ reports/  # Reports copy karo
+echo "Test results saved to reports/"
+YML Mein:
+yaml
+Wrap
+Copy
+- name: Test and Report
+  run: |
+    chmod +x scripts/test-and-report.sh
+    ./scripts/test-and-report.sh
+- name: Upload Test Report
+  uses: actions/upload-artifact@v3
+  with:
+    name: test-report
+    path: reports/
+Kyun: Steps reduce hote hain, aur file handling efficient hoti hai.
+3. Deploy with Validation
+Kya: Deploy se pehle APK validate karo.
+Kaise: scripts/deploy.sh:
+bash
+Wrap
+Copy
+#!/bin/bash
+APK_PATH="apk/app-debug.apk"
+if [ -f "$APK_PATH" ]; then
+  echo "APK found, deploying..."
+  # Firebase deploy command yahan daal sakte ho
+else
+  echo "APK not found!" >&2
+  exit 1
+fi
+YML Mein:
+yaml
+Wrap
+Copy
+- name: Deploy with Validation
+  run: |
+    chmod +x scripts/deploy.sh
+    ./scripts/deploy.sh
+Kyun: File check se fail hone ka chance kam hota hai.
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+name: Android CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+stages:
+  - lint
+  - build
+  - test
+  - static-analysis
+  - report
+  - sign
+  - deploy
+  - publish
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+
+      - name: Cache Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      - name: Run Lint
+        run: ./gradlew lintDebug
+        continue-on-error: true
+
+      - name: Build with Script
+        run: |
+          echo '#!/bin/bash' > scripts/build.sh
+          echo './gradlew assembleDebug --parallel --no-daemon' >> scripts/build.sh
+          echo 'if [ $? -eq 0 ]; then echo "Build OK"; else echo "Build Failed" >&2; exit 1; fi' >> scripts/build.sh
+          chmod +x scripts/build.sh
+          ./scripts/build.sh
+
+      - name: Test and Report with Script
+        run: |
+          echo '#!/bin/bash' > scripts/test.sh
+          echo './gradlew testDebugUnitTest' >> scripts/test.sh
+          echo 'mkdir -p reports' >> scripts/test.sh
+          echo 'cp -r app/build/test-results/testDebugUnitTest/ reports/' >> scripts/test.sh
+          chmod +x scripts/test.sh
+          ./scripts/test.sh
+
+      - name: Run Detekt
+        run: ./gradlew detekt
+        continue-on-error: true
+
+      - name: Save Reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: all-reports
+          path: |
+            app/build/reports/lint-results-debug.html
+            reports/
+            app/build/reports/detekt/detekt.html
+
+      - name: Save APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+  sign-and-deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+
+      - name: Download APK
+        uses: actions/download-artifact@v3
+        with:
+          name: app-debug-apk
+          path: apk/
+
+      - name: Sign APK
+        run: |
+          jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore $GITHUB_WORKSPACE/mykeystore.jks \
+            -storepass ${{ secrets.STORE_PASSWORD }} -keypass ${{ secrets.KEY_PASSWORD }} \
+            apk/app-debug.apk myalias
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Deploy with Script
+        run: |
+          echo '#!/bin/bash' > scripts/deploy.sh
+          echo 'APK_PATH="apk/app-debug.apk"' >> scripts/deploy.sh
+          echo 'if [ -f "$APK_PATH" ]; then echo "Deploying..."; else echo "APK not found!" >&2; exit 1; fi' >> scripts/deploy.sh
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh
+      - name: Deploy to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          token: ${{ secrets.FIREBASE_TOKEN }}
+          file: apk/app-debug.apk
+          groups: testers
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: sign-and-deploy
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Download Signed APK
+        uses: actions/download-artifact@v3
+        with:
+          name: app-debug-apk
+          path: signed-apk/
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "v${{ github.run_number }}"
+          release_name: "Release ${{ github.run_number }}"
+          files: signed-apk/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
