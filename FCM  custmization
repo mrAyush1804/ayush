@@ -1,0 +1,282 @@
+
+
+
+Bhai, tune jo code diya hai MyFirebaseMessagingService.kt, woh bilkul sahi hai, lekin lagta hai tujhe isme kuch cheezein samajh nahi aayi hain jaise "message", 
+"id", "title", aur "drawable" ka kya matlab hai, aur yeh sab kis liye use ho rahe hain. Mai tujhe Hinglish mein har ek part ko detail mein samjhaata hoon, taaki tu confuse
+na ho aur har cheez ka purpose clear ho jaye. Chalo, line-by-line dekhte hain!
+
+Code Breakdown Aur Samajhna
+1. onMessageReceived(remoteMessage: RemoteMessage)
+kotlin
+Wrap
+Copy
+override fun onMessageReceived(remoteMessage: RemoteMessage) {
+    super.onMessageReceived(remoteMessage)
+    remoteMessage.notification?.let {
+        val title = it.title
+        val body = it.body
+        sendNotification(title ?: "Default Title", body ?: "Default Body")
+    }
+    if (remoteMessage.data.isNotEmpty()) {
+        val customData = remoteMessage.data["key"] // Server se jo key bheji
+        sendNotification("Custom Data", customData ?: "No Data")
+    }
+Kya Hai Yeh?: Yeh function tab chalta hai jab server se FCM message aata hai.
+Message Kahan Se Aaya?: remoteMessage ek object hai jo Firebase server se bheja gaya data ya notification laata hai.
+Title Kya Hai?: remoteMessage.notification?.title se notification ka title milta hai jo server ne bheja (jaise "Test Title"). Agar title nahi hai toh ?: "Default Title" se fallback value use hoti hai.
+Body Kya Hai?: remoteMessage.notification?.body se message ka content milta hai (jaise "Bhai test hai"). Agar body nahi hai toh "Default Body" use hota hai.
+Custom Data: remoteMessage.data["key"] se server ka custom data fetch hota hai (jaise {"key": "Hello Bhai"} agar server ne bheja ho).
+Kis Liye?: Yeh sab sendNotification function ko bhej rahe hain taaki notification ban sake.
+2. sendNotification(title: String, message: String)
+kotlin
+Wrap
+Copy
+private fun sendNotification(title: String, message: String) {
+    val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+    val channelId = "default_channel_id"
+
+    if (VERSION.SDK_INT >= VERSION_CODES.O) {
+        val channel = NotificationChannel(channelId, "Default Channel", NotificationManager.IMPORTANCE_DEFAULT)
+        notificationManager.createNotificationChannel(channel)
+    }
+
+    val builder = NotificationCompat.Builder(this, channelId)
+        .setSmallIcon(R.drawable.bulb) // Apna icon daal
+        .setContentTitle(title)
+        .setContentText(message)
+        .setAutoCancel(true)
+
+    notificationManager.notify(1, builder.build())
+}
+Kya Hai Yeh?: Yeh function notification ko banata aur dikhata hai.
+Notification Manager: getSystemService(NOTIFICATION_SERVICE) se phone ka notification system access hota hai.
+Channel ID ("default_channel_id"): Android 8.0 (Oreo) se notification ke liye channel banana zaroori hai. Yeh ek unique ID hai jo channel ko identify karta hai.
+Channel Banane Ka Kaam: NotificationChannel banaya taaki Android Oreo aur upar wale phones pe notification sahi se dikhe.
+Builder Ka Kaam:
+NotificationCompat.Builder ek template hai jo notification ko design karta hai.
+.setSmallIcon(R.drawable.bulb): Yeh notification bar mein chhota sa icon dikhata hai. R.drawable.bulb ek image file hai jo res/drawable/ folder mein hoti hai.
+.setContentTitle(title): Notification ka title set karta hai (jo onMessageReceived se aaya).
+.setContentText(message): Notification ka message/body set karta hai.
+.setAutoCancel(true): Notification pe click karne ke baad woh khud gayab ho jati hai.
+ID (1) Kis Liye?: notify(1, builder.build()) mein 1 ek unique ID hai jo batata hai ki yeh kaunsi notification hai. 
+
+Agar ek hi ID use karega toh purani notification overwrite ho jayegi. Multiple notifications ke liye alag-alag ID use karna padta hai (jaise 1, 2, 3...).
+Drawable Kya Hai?: R.drawable.bulb ek resource hai jo app ke res/drawable/ folder mein rakha hota hai. Yeh ek image file (PNG, JPG ya vector)
+hoti hai jo notification ke saath dikhti hai. Agar yeh nahi hai toh error aayega, toh tujhe ek icon banana ya add karna padega.
+3. onNewToken(token: String)
+kotlin
+Wrap
+Copy
+override fun onNewToken(token: String) {
+    super.onNewToken(token)
+    println("FCM Token: $token")
+}
+Kya Hai Yeh?: Jab app ka FCM token refresh hota hai (ya pehli baar generate hota hai), yeh function chalta hai.
+Token Kis Liye?: Yeh token server ko bhejna padta hai taaki woh is device ko message bhej sake.
+Println: Bas token ko console mein dikha raha hai testing ke liye.
+Tere Sawalon Ke Jawab
+Message Kahan Hai?: Message remoteMessage.notification?.body ya remoteMessage.data["key"] se aata hai, aur sendNotification mein setContentText(message) ke roop mein dikhta hai.
+ID Kis Liye?: notify(1, ...) mein 1 notification ki pehchaan ke liye hai. Har notification ke liye unique ID chahiye warna ek hi jagah overwrite hoga.
+Title Kis Liye?: setContentTitle(title) notification ka headline hota hai jo user pehle dekhta hai (jaise "Test Title").
+Drawable Kis Liye?: R.drawable.bulb ek chhota sa icon hai jo notification ke saath dikhta hai. Yeh zaroori hai, nahi toh notification nahi dikhegi. Iske liye:
+res/drawable/ folder mein ja.
+Ek image file (jaise bulb.png) daal, ya Android Studio mein "New > Image Asset" se icon bana.
+Yeh Sab Nahi Samajh Aaya?: Bhai, simple hai:
+Server se data aata hai (title, body, ya data).
+sendNotification usko ek notification mein convert karta hai.
+Icon (drawable) aur ID (1) usko phone pe dikhane ke liye chahiye.
+Kya Karna Hai Agar Error Aaye?
+Drawable Nahi Hai?: Agar R.drawable.bulb nahi milta, toh:
+res/drawable/ mein ek dummy icon daal (jaise ic_launcher.png use kar sakta hai).
+Ya code mein setSmallIcon(android.R.drawable.ic_dialog_info) use kar (default Android icon).
+Notification Nahi Dikh Rahi?: Logcat check kar, println se remoteMessage ka data dekho ki server se aaya bhi ya nahi.
+Bhai, ab clear ho gaya na? Yeh code notification banane aur dikhane ke liye hai, aur drawable usme chhota sa icon dikhane ke 
+liye zaroori hai. Koi aur doubt ho toh bol, mai aur samjha doonga! Chal, ab test kar ke dekh!
+
+
+
+
+
+
+aur kya opration aur kese custmize kar sakte ha 
+
+
+Bhai, ab baat aayi hai notification ko customize karne ki aur extra operations add karne ki! MyFirebaseMessagingService.kt mein jo code hai, 
+usko hum aur bhi powerful bana sakte hain. Mai tujhe Hinglish mein samjhaata hoon ki aur kya-kya operations daal sakte hain aur notification ko 
+kaise customize kar sakte hain. Har cheez step-by-step, examples ke saath batata hoon taaki tu apne hisaab se tweak kar sake. Chalo shuru karte hain!
+
+1. Notification Ko Customize Karne Ke Operations
+sendNotification function mein NotificationCompat.Builder ka use hota hai. Isko hum aur customize kar sakte hain:
+
+a) Bada Icon Add Karo
+Chhota icon (setSmallIcon) ke saath ek bada icon bhi dikha sakte ho:
+kotlin
+Wrap
+Copy
+val builder = NotificationCompat.Builder(this, channelId)
+    .setSmallIcon(R.drawable.bulb)
+    .setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.big_icon)) // res/drawable/big_icon.png
+    .setContentTitle(title)
+    .setContentText(message)
+    .setAutoCancel(true)
+Kis Liye?: Notification kholne pe bada icon dikhega (jaise profile pic ya logo).
+b) Sound Add Karo
+Notification mein custom sound daal sakte ho:
+kotlin
+Wrap
+Copy
+val builder = NotificationCompat.Builder(this, channelId)
+    .setSmallIcon(R.drawable.bulb)
+    .setContentTitle(title)
+    .setContentText(message)
+    .setSound(Uri.parse("android.resource://${packageName}/raw/notification_sound")) // res/raw/notification_sound.mp3
+    .setAutoCancel(true)
+Kaise?: res/raw/ folder bana, usme .mp3 file daal (jaise notification_sound.mp3).
+c) Vibration Add Karo
+Vibrate effect daal sakte ho:
+kotlin
+Wrap
+Copy
+val builder = NotificationCompat.Builder(this, channelId)
+    .setSmallIcon(R.drawable.bulb)
+    .setContentTitle(title)
+    .setContentText(message)
+    .setVibrate(longArrayOf(0, 1000, 500, 1000)) // Pattern: wait, vibrate, wait, vibrate
+    .setAutoCancel(true)
+Kis Liye?: Phone vibrate karega notification aane pe.
+d) Priority/Importance Set Karo
+Notification ko urgent ya normal bana sakte ho:
+kotlin
+Wrap
+Copy
+val builder = NotificationCompat.Builder(this, channelId)
+    .setSmallIcon(R.drawable.bulb)
+    .setContentTitle(title)
+    .setContentText(message)
+    .setPriority(NotificationCompat.PRIORITY_HIGH) // High priority, heads-up notification
+    .setAutoCancel(true)
+Channel ke liye bhi:
+kotlin
+Wrap
+Copy
+if (VERSION.SDK_INT >= VERSION_CODES.O) {
+    val channel = NotificationChannel(channelId, "Default Channel", NotificationManager.IMPORTANCE_HIGH)
+    notificationManager.createNotificationChannel(channel)
+}
+Kis Liye?: High priority se notification screen pe pop-up karegi (heads-up).
+e) Action Button Add Karo
+Notification mein buttons daal sakte ho (jaise "Reply" ya "Dismiss"):
+kotlin
+Wrap
+Copy
+val intent = Intent(this, MainActivity::class.java)
+val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+val builder = NotificationCompat.Builder(this, channelId)
+    .setSmallIcon(R.drawable.bulb)
+    .setContentTitle(title)
+    .setContentText(message)
+    .addAction(R.drawable.ic_reply, "Reply", pendingIntent) // Button
+    .setAutoCancel(true)
+Kis Liye?: Click karne pe app khulega ya koi action hoga.
+f) Big Text Style
+Agar message lamba hai, toh bada text dikhane ka style:
+kotlin
+Wrap
+Copy
+val bigTextStyle = NotificationCompat.BigTextStyle()
+    .bigText(message) // Poora message dikhega expand karne pe
+
+val builder = NotificationCompat.Builder(this, channelId)
+    .setSmallIcon(R.drawable.bulb)
+    .setContentTitle(title)
+    .setContentText(message)
+    .setStyle(bigTextStyle)
+    .setAutoCancel(true)
+Kis Liye?: Lamba message pura padha ja sake.
+2. Aur Operations Add Karne Ke Ideas
+Notification ke saath aur kaam kar sakte hain:
+
+a) Unique Notification IDs
+Har notification ke liye alag ID use karo:
+kotlin
+Wrap
+Copy
+private var notificationId = 0
+private fun sendNotification(title: String, message: String) {
+    notificationId++ // Har baar nayi ID
+    notificationManager.notify(notificationId, builder.build())
+}
+Kis Liye?: Ek saath multiple notifications dikhegi, overwrite nahi hogi.
+b) Custom Data Handle Karo
+Server se aaye data ke basis pe alag-alag kaam:
+kotlin
+Unwrap
+Copy
+override fun onMessageReceived(remoteMessage: RemoteMessage) {
+    if (remoteMessage.data.isNotEmpty()) {
+        val type = remoteMessage.data["type"]
+        when (type) {
+            "alert" -> sendNotification("Alert!", remoteMessage.data["message"] ?: "No Message")
+            "update" -> sendNotification("Update Available", "App ko update karo!")
+            else -> sendNotification("Custom Data", remoteMessage.data["key"] ?: "No Data")
+        }
+    }
+}
+Kis Liye?: Server se type ke hisaab se alag notification ya action.
+c) Local Database Mein Save Karo
+Notification ko app ke database mein save karo:
+kotlin
+Wrap
+Copy
+override fun onMessageReceived(remoteMessage: RemoteMessage) {
+    remoteMessage.notification?.let {
+        val title = it.title ?: "Default Title"
+        val body = it.body ?: "Default Body"
+        // Room ya SQLite mein save karo
+        println("Saving to DB: $title - $body")
+        sendNotification(title, body)
+    }
+}
+Kis Liye?: Notification ka history rakhna ho toh.
+d) Click Pe Specific Screen Open Karo
+Notification click karne pe kisi specific activity kholo:
+kotlin
+Wrap
+Copy
+val intent = Intent(this, SecondActivity::class.java).apply {
+    putExtra("notification_data", message) // Data bhej sakte ho
+}
+val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+val builder = NotificationCompat.Builder(this, channelId)
+    .setSmallIcon(R.drawable.bulb)
+    .setContentTitle(title)
+    .setContentText(message)
+    .setContentIntent(pendingIntent) // Click pe intent chalega
+    .setAutoCancel(true)
+Kis Liye?: User ko direct wahan le jao jahan action chahiye.
+3. Kaise Customize Karein?
+Color: Notification ka accent color set karo:
+kotlin
+Wrap
+Copy
+.setColor(ContextCompat.getColor(this, R.color.red))
+Progress Bar: Agar download ya loading dikhana ho:
+kotlin
+Wrap
+Copy
+.setProgress(100, 50, false) // 50% complete
+Image: Badi image dikhane ke liye:
+kotlin
+Wrap
+Copy
+.setStyle(NotificationCompat.BigPictureStyle().bigPicture(BitmapFactory.decodeResource(resources, R.drawable.big_image)))
+4. Testing Ke Liye
+Firebase Console se alag-alag payload bhejo:
+Simple: {"notification": {"title": "Test", "body": "Hello"}}
+Custom Data: {"data": {"type": "alert", "message": "Urgent!"}}
+Har change ke baad phone pe test kar.
+Bhai, ab toh tujhe pata chal gaya na ki notification ko kitna kuch customize kar sakte hain! Sound, vibration, buttons, style, data handling—jo chahiye woh daal 
+sakta hai. Koi specific customization chahiye toh bol, uska code de doonga! Chal, 
+ab apne hisaab se tweak kar aur test kar ke dekh!
