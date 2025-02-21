@@ -19,3 +19,19 @@ Android Mein: Baseline Profiles ek specific feature hai jo sirf Android apps ke 
 Websites Mein: Direct Baseline Profiles nahi hote, lekin similar optimization techniques (Critical CSS, WebAssembly, etc.) use hoti hain. Inko "Baseline Profiles" ki tarah automate karna possible hai with tools like Lighthouse aur GitHub Actions.
 Fark: Android ka focus device-specific compilation pe hai, jabki websites ka browser compatibility aur network pe.
 Agar aap website ke liye koi specific optimization workflow banane mein help chahiye, to batana! Ya
+
+
+
+
+
+
+----------------------------------------------------------------
+Part	 Kahan Aata Hai	Kyun
+name	Shuru mein	Workflow ka naam dikhane ke liye
+on	name ke niche	Kab chalega yeh batane ke liye
+jobs	 on ke niche	Kaam define karne ke liye
+runs-on	Job ke andar	Machine type batane ke liye
+steps	Job ke andar	Chhote kaam likhne ke liye
+uses	Step mein	Pre-built action call karne ke liye
+run	Step mein	Custom command chalane ke liye
+with	uses ke saath	Action ko inputs dene ke liye
