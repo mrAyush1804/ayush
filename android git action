@@ -1,0 +1,275 @@
+Let me break down this GitHub Actions workflow YAML file step-by-step with its meaning, purpose, and why each part is used. I'll explain it in a simple Hindi-English mix and highlight key concepts so you can understand kya aur kyun ho raha hai. Since this is an Android-specific workflow, I'll focus on its Android-related tools and processes.
+
+Workflow Overview
+Name: Build
+Purpose: Yeh workflow Android project ke liye hai jo code ko build karta hai, tests chalata hai (unit tests, screenshot tests, instrumentation tests), linting karta hai, aur coverage reports banata hai. Yeh CI (Continuous Integration) pipeline ka kaam karta hai jab code main branch pe push hota hai ya pull request banta hai.
+Section-by-Section Explanation
+1. name: Build
+Kya Hai: Workflow ka naam.
+Kyun: GitHub Actions dashboard mein yeh naam dikhega taki pata chale yeh kya karta hai.
+2. on:
+yaml
+Wrap
+Copy
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+Kya Hai: Yeh trigger batata hai ki workflow kab chalega.
+Kyun: Jab main branch pe push ho ya koi pull request (PR) bane, tab yeh start hoga. PR ke case mein code review ke liye checks chalenge.
+3. concurrency:
+yaml
+Wrap
+Copy
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+Kya Hai: Yeh concurrency control karta hai.
+Kyun: Ek branch (github.ref) pe ek hi build chalega. Agar naya push aaye jab pehla build chal raha ho, to purana cancel ho jayega. Time aur resources bachane ke liye.
+4. jobs:
+Yahan do jobs hain: test_and_apk aur androidTest. Har job alag-alag kaam karta hai.
+
+Job 1: test_and_apk
+Purpose: Local tests (unit tests, lint, screenshot tests) chalana, APK build karna, aur reports upload karna.
+Key Settings:
+yaml
+Wrap
+Copy
+runs-on: ubuntu-latest
+permissions:
+  contents: write
+  pull-requests: write
+  security-events: write
+timeout-minutes: 60
+Kya: Ubuntu machine pe chalega, specific permissions ke saath, aur 60 minutes tak chal sakta hai.
+Kyun:
+permissions: Git auto-commit aur CodeQL jaise tools ke liye zaroori.
+timeout: Agar 60 minutes se zyada lage, to fail ho jaye (resource waste na ho).
+Steps:
+Checkout
+yaml
+Wrap
+Copy
+- name: Checkout
+  uses: actions/checkout@v4
+Kya: Code repository se download karta hai.
+Kyun: Machine pe code laana zaroori hai kaam shuru karne ke liye.
+Copy CI gradle.properties
+yaml
+Wrap
+Copy
+- name: Copy CI gradle.properties
+  run: mkdir -p ~/.gradle ; cp .github/ci-gradle.properties ~/.gradle/gradle.properties
+Kya: Ek custom gradle.properties file ko Gradle ke folder mein copy karta hai.
+Kyun: CI ke liye specific settings (jaise memory limits ya flags) set karne ke liye. Yeh file shayad .github/ folder mein rakhi hai.
+Set up JDK 17
+yaml
+Wrap
+Copy
+- name: Set up JDK 17
+  uses: actions/setup-java@v4
+  with:
+    distribution: 'zulu'
+    java-version: 17
+Kya: Java 17 (Zulu distribution) install karta hai.
+Kyun: Android apps Java/Kotlin pe chalte hain, aur Gradle ko JDK chahiye.
+Setup Gradle
+yaml
+Wrap
+Copy
+- name: Setup Gradle
+  uses: gradle/actions/setup-gradle@v4
+  with:
+    cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+Kya: Gradle setup karta hai aur caching enable karta hai.
+Kyun: Build faster hone ke liye cache use hota hai, aur encryption key se cache secure rehta hai.
+Check build-logic
+yaml
+Wrap
+Copy
+- name: Check build-logic
+  run: ./gradlew :build-logic:convention:check
+Kya: build-logic module ke conventions check karta hai.
+Kyun: Project mein custom Gradle plugins ho sakte hain jo code quality ya structure enforce karte hain.
+Check spotless
+yaml
+Wrap
+Copy
+- name: Check spotless
+  run: ./gradlew spotlessCheck --init-script gradle/init.gradle.kts --no-configuration-cache
+Kya: Spotless tool se code formatting check karta hai.
+Kyun: Yeh ensure karta hai ki code style consistent hai (jaise indentation, spacing).
+Check Dependency Guard
+yaml
+Wrap
+Copy
+- name: Check Dependency Guard
+  id: dependencyguard_verify
+  continue-on-error: true
+  run: ./gradlew dependencyGuard
+Kya: Dependency Guard plugin se dependencies check karta hai.
+Kyun: Yeh dekhta hai ki project ke dependencies expected list se match karte hain ya nahi. continue-on-error se fail hone pe bhi aage badhta hai.
+Prevent updating Dependency Guard baselines if this is a fork
+yaml
+Wrap
+Copy
+- name: Prevent updating Dependency Guard baselines if this is a fork
+  if: steps.dependencyguard_verify.outcome == 'failure' && github.event.pull_request.head.repo.full_name != github.repository
+  run: echo "::error::Dependency Guard failed..." && exit 1
+Kya: Agar fork se PR hai aur Dependency Guard fail hua, to error deta hai.
+Kyun: Forks mein baselines update nahi hone chahiye, original repo mein hi changes hone chahiye.
+Generate new Dependency Guard baselines
+yaml
+Wrap
+Copy
+- name: Generate new Dependency Guard baselines if verification failed and it's a PR
+  if: steps.dependencyguard_verify.outcome == 'failure' && github.event_name == 'pull_request'
+  run: ./gradlew dependencyGuardBaseline
+Kya: Agar PR mein Dependency Guard fail hua, to naye baselines banata hai.
+Kyun: Dependencies update hone pe baselines ko refresh karna padta hai.
+Push new Dependency Guard baselines
+yaml
+Wrap
+Copy
+- name: Push new Dependency Guard baselines if available
+  uses: stefanzweifel/git-auto-commit-action@v5
+  if: steps.dependencyguard_baseline.outcome == 'success'
+  with:
+    file_pattern: '**/dependencies/*.txt'
+    commit_message: "🤖 Updates baselines for Dependency Guard"
+Kya: Naye baselines ko PR mein commit karta hai.
+Kyun: Automate karta hai taki developer ko manually na karna pade.
+Run all local screenshot tests (Roborazzi)
+yaml
+Wrap
+Copy
+- name: Run all local screenshot tests (Roborazzi)
+  id: screenshotsverify
+  continue-on-error: true
+  run: ./gradlew verifyRoborazziDemoDebug
+Kya: Roborazzi se UI screenshot tests chalata hai.
+Kyun: Yeh check karta hai ki UI pehle jaise dikhta hai ya nahi (visual regression testing).
+Screenshot Workflow (Similar to Dependency Guard)
+Agar screenshot tests fail hote hain:
+Fork mein error deta hai.
+PR mein naye screenshots banata hai (recordRoborazziDemoDebug) aur commit karta hai.
+Kyun: UI changes ko automate aur track karta hai.
+Run local tests
+yaml
+Wrap
+Copy
+- name: Run local tests
+  run: ./gradlew testDemoDebug :lint:test
+Kya: Unit tests aur lint tests chalata hai.
+Kyun: Code quality aur functionality check karta hai.
+Build all build type and flavor permutations
+yaml
+Wrap
+Copy
+- name: Build all build type and flavor permutations
+  run: ./gradlew :app:assemble
+Kya: Saare APKs build karta hai (sabhi flavors aur types ke).
+Kyun: Ensure karta hai ki har variant build ho sake.
+Upload build outputs (APKs)
+yaml
+Wrap
+Copy
+- name: Upload build outputs (APKs)
+  uses: actions/upload-artifact@v4
+  with:
+    name: APKs
+    path: '**/build/outputs/apk/**/*.apk'
+Kya: Build hue APKs ko GitHub pe upload karta hai.
+Kyun: Developers download kar sakein ya further testing ke liye use ho.
+Upload Reports (Tests, Screenshots, Lint)
+JVM test results (XML), screenshot results (PNG), lint reports (HTML aur SARIF) upload karta hai.
+Kyun: Debugging aur analysis ke liye reports zaroori hain. SARIF CodeQL ke liye hai (security analysis).
+Check badging
+yaml
+Wrap
+Copy
+- name: Check badging
+  run: ./gradlew :app:checkProdReleaseBadging
+Kya: App ke badges (icon, version) check karta hai.
+Kyun: Production build ke metadata sahi hone chahiye.
+Job 2: androidTest
+Purpose: Emulator pe instrumentation tests chalana aur coverage reports banane ke liye.
+Key Settings:
+yaml
+Wrap
+Copy
+strategy:
+  matrix:
+    api-level: [26, 34]
+Kya: API 26 (Android 8) aur API 34 (Android 14) pe tests chalayega.
+Kyun: Alag-alag Android versions pe compatibility check karta hai.
+Steps:
+Delete unnecessary tools
+yaml
+Wrap
+Copy
+- name: Delete unnecessary tools 🔧
+  uses: jlumbroso/free-disk-space@v1.3.1
+Kya: Machine se unnecessary tools (dotnet, haskell) hata deta hai.
+Kyun: Disk space bachane ke liye, Android tests ke liye zyada jagah chahiye.
+Enable KVM
+Kya: Emulator ke liye KVM (hardware acceleration) enable karta hai.
+Kyun: Emulator faster chalega.
+Build and run instrumentation tests
+yaml
+Wrap
+Copy
+- name: Build projects and run instrumentation tests
+  uses: reactivecircus/android-emulator-runner@v2
+  with:
+    api-level: ${{ matrix.api-level }}
+    script: ./gradlew connectedDemoDebugAndroidTest --daemon
+Kya: Emulator pe instrumentation tests chalata hai.
+Kyun: Real device behavior simulate karta hai.
+Generate coverage reports (API 30 only)
+yaml
+Wrap
+Copy
+- name: Generate coverage reports for Debug variants (only API 30)
+  if: matrix.api-level == 30
+  run: ./gradlew createDemoDebugCombinedCoverageReport
+Kya: Code coverage report banata hai.
+Kyun: Batata hai kitna code test se cover hua (API 30 pe kyunki ek baseline chahiye).
+Display local test coverage
+yaml
+Wrap
+Copy
+- name: Display local test coverage (only API 30)
+  uses: madrapps/jacoco-report@v1.7.1
+Kya: JaCoCo report se coverage PR comment mein dikhata hai.
+Kyun: Developers ko pata chale coverage kitna hai.
+Upload coverage reports
+yaml
+Wrap
+Copy
+- name: Upload local coverage reports (XML + HTML) (only API 30)
+  uses: actions/upload-artifact@v4
+  with:
+    path: '**/build/reports/jacoco/'
+Kya: Coverage reports upload karta hai.
+Kyun: Offline analysis ke liye rakhta hai.
+Key Tools Aur Unka Use
+Spotless: Code formatting check.
+Dependency Guard: Dependencies ka expected state check karta hai.
+Roborazzi: Screenshot tests ke liye (UI regression).
+JaCoCo: Code coverage report banata hai.
+Lint: Code quality check.
+Gradle: Build aur test runner.
+Kyun Use Ho Raha Hai?
+Code Quality: Spotless, lint, aur Dependency Guard se code clean aur consistent rehta hai.
+Testing: Unit tests, screenshot tests, aur instrumentation tests se functionality aur UI check hota hai.
+Automation: Fail hone pe baselines ya screenshots update aur commit ho jate hain.
+Coverage: Developers ko pata chalta hai kitna code tested hai.
+Artifacts: APKs aur reports save hote hain debugging ke liye.
+Improvements Jo Ho Sakte Hain
+Parallel Execution: test_and_apk aur androidTest parallel chalein (matrix ke saath).
+Fail Fast: Agar lint ya spotless fail ho, to aage na badhe.
+Slack/Email Alerts: Failure pe notification add karo.
+Caching: Emulator images cache karo speed ke liye.
+Agar koi specific part samajhna hai, to bolo!
